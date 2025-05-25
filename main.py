@@ -1,0 +1,136 @@
+import pathlib, sys, textwrap, re, torch, warnings, requests, datetime
+from rich import print
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from deepmultilingualpunctuation import PunctuationModel
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
+MODEL_NAME = "facebook/bart-large-cnn"
+DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
+SUMMARY_LOG = pathlib.Path("santraukos.txt")
+
+print(f"[italic dim]🔄  Kraunamas santraukos modelis {MODEL_NAME} ({DEVICE}) …[/]")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model     = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(DEVICE)
+
+print("[italic dim]🔄  Kraunamas skyrybos modelis (deepmultilingualpunctuation) …[/]")
+punct_model = PunctuationModel()
+
+def restore_punct(text: str) -> str:
+    clean = re.sub(r"\s+", " ", text.strip().lower())
+    return punct_model.restore_punctuation(clean)
+
+def count_sentences(txt: str) -> int:
+    return len(re.findall(r"[.!?]", txt))
+
+def summarize(text: str,
+              target_sentences: int = 8,
+              max_tokens: int = 240,
+              min_tokens: int = 120,
+              tries: int = 3) -> str:
+
+    if MODEL_NAME.startswith(("google/mt5", "m3hrdadfi/mbart")):
+        text = "summarize: " + text
+
+    for _ in range(tries):
+        inputs = tokenizer(text,
+                           return_tensors="pt",
+                           truncation=True,
+                           max_length=1024).to(DEVICE)
+
+        ids = model.generate(
+            **inputs,
+            max_length=max_tokens,
+            min_length=min_tokens,
+            num_beams=4,
+            length_penalty=2.0,
+            no_repeat_ngram_size=3,
+        )
+        summary = tokenizer.decode(ids[0], skip_special_tokens=True).strip()
+        if count_sentences(summary) >= target_sentences:
+            return summary
+
+        max_tokens += 80
+        min_tokens += 40
+
+    return summary
+
+TXT = pathlib.Path("tekstynas.txt")
+if TXT.exists():
+    raw_articles = TXT.read_text(encoding="utf-8").split("===ARTICLE===")[1:]
+else:
+    raw_articles = []
+
+def parse_title(block: str) -> str:
+    for line in block.splitlines():
+        if line.startswith("Title: "):
+            return line[7:]
+    return "Be pavadinimo"
+
+def get_body(block: str) -> str:
+    return block.split("===\n", 1)[-1].strip()
+
+titles = [parse_title(b) for b in raw_articles]
+
+def fetch_url(url: str) -> str:
+    html = requests.get(url, timeout=10).text
+    txt = "\n".join(re.findall(r"<p[^>]*>(.*?)</p>", html, flags=re.S | re.I))
+    txt = re.sub("<[^>]+>", "", txt)
+
+    if not txt or len(txt.split()) < 100:
+        sys.exit("Nepavyko išgauti pakankamai teksto iš URL.")
+    return txt.strip()
+
+def log_summary(source: str, summary: str):
+    """Prideda santrauką į santraukos.txt (prie galo)."""
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    with SUMMARY_LOG.open("a", encoding="utf-8") as f:
+        f.write(f"[{stamp}] {source}\n{summary}\n\n")
+
+while True:
+    print("\n[bold]Santraukos režimas[/bold]")
+    print("[cyan]1[/] – rinktis straipsnį iš tekstyno")
+    print("[cyan]2[/] – įvesti straipsnio URL")
+    print("[cyan]q[/] – išeiti")
+
+    mode = input("Pasirinkite → ").strip().lower()
+    if mode in {"q", ""}:
+        print("👋  Iki!")
+        break
+
+    if mode == "1":
+        if not raw_articles:
+            print("⛔️  Tekstynas nerastas arba tuščias.")
+            continue
+        print("\n[bold]Straipsnių sąrašas[/bold]")
+        for i, t in enumerate(titles, 1):
+            print(f"[cyan]{i:>2}[/] {t}")
+        try:
+            idx = int(input("\nĮveskite straipsnio numerį → "))
+            body  = get_body(raw_articles[idx - 1])
+            label = f"Tekstynas: {titles[idx - 1]}"
+        except (ValueError, IndexError):
+            print("⛔️  Netinkamas numeris.")
+            continue
+
+    elif mode == "2":
+        url = input("Įveskite straipsnio URL → ").strip()
+        print("[italic dim]🔄  Parsisiunčiamas turinys iš URL …[/]")
+        try:
+            body = fetch_url(url)
+        except Exception as e:
+            print(f"⛔️  Klaida: {e}")
+            continue
+        label = f"URL: {url}"
+
+    else:
+        print("⛔️  Neatpažintas pasirinkimas.")
+        continue
+
+    print("\n[bold]--- SANTRAUKA ---[/bold]\n")
+    body     = restore_punct(body)
+    summary  = summarize(body)
+    print(textwrap.fill(summary, width=100))
+    
+    log_summary(label, summary)
+    print(f"\n\n[italic dim]💾  Santrauka įrašyta į „{SUMMARY_LOG}“[/]")
