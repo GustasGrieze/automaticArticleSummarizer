@@ -9,8 +9,7 @@
 * Generates **≥ 8‑sentence abstractive summaries** with beam search and dynamic
   length‑extension if the first attempt is too short.
 * Lets the user either **pick an article from `tekstynas.txt`** *or* paste a
-  **URL** – the script downloads the page (via *newspaper3k* or a `requests` +
-  fallback parser), cleans the HTML and summarises the result.
+  **URL** – the script downloads the page, cleans the HTML and summarises the result.
 * After every run the summary is appended to **`santrauka.txt`** for later
   inspection.
 
@@ -45,22 +44,20 @@ summaries in the accompanying CLI tool.
 
 | Source                                  | Share |
 | --------------------------------------- | ----- |
-| BBC News API                            | 40 %  |
-| Wikipedia API                           | 35 %  |
+| BBC News                                | 40 %  |
+| Wikipedia                               | 35 %  |
 | Manually‑curated web articles (various) | 25 %  |
 
 ## 7  Collection & cleaning pipeline
 
-1. Fetch raw `.txt` / `.html` or URL list.
-2. Convert HTML → plain text.
-3. Tokenise sentences & words.
-4. Lemmatise.
-5. Remove stop‑words.
-6. Strip control chars, normalise whitespace, NFC.
-7. Deduplicate identical sentences/paragraphs.
+1. Tokenise sentences & words.
+2. Lemmatise.
+3. Remove stop‑words.
+4. Strip control chars, normalise whitespace, NFC.
+5. Deduplicate identical sentences/paragraphs.
 
 ## 8 Technical specification
 
 * Encoding UTF‑8, Unix line‑endings.
 * Average article fits within 1 024 BART tokens; safe for default 1 GiB RAM.
-* Tested on Python 3.9 + Torch 2.2 with and without CUDA.
+* Tested on Python 3.9
