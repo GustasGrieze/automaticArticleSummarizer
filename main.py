@@ -1,14 +1,13 @@
-import pathlib, sys, textwrap, re, torch, warnings, requests, datetime
+import pathlib, sys, textwrap, re, warnings, requests, datetime
 from rich import print
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from deepmultilingualpunctuation import PunctuationModel
 from bs4 import BeautifulSoup
 
-
 warnings.filterwarnings("ignore", category=UserWarning)
 
 MODEL_NAME = "facebook/bart-large-cnn"
-DEVICE     = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE     = "cpu"
 SUMMARY_LOG = pathlib.Path("santraukos.txt")
 
 print(f"[italic dim]🔄  Kraunamas santraukos modelis {MODEL_NAME} ({DEVICE}) …[/]")
@@ -26,7 +25,6 @@ def restore_punct(text: str, chunk_size: int = 400) -> str:
         restored_parts.append(punct_model.restore_punctuation(chunk))
     return " ".join(restored_parts)
 
-
 def count_sentences(txt: str) -> int:
     return len(re.findall(r"[.!?]", txt))
 
@@ -35,9 +33,6 @@ def summarize(text: str,
               max_tokens: int = 240,
               min_tokens: int = 120,
               tries: int = 3) -> str:
-
-    if MODEL_NAME.startswith(("google/mt5", "m3hrdadfi/mbart")):
-        text = "summarize: " + text
 
     for _ in range(tries):
         inputs = tokenizer(text,
@@ -131,7 +126,6 @@ while True:
             print(f"⛔️  Klaida: {e}")
             continue
         label = f"URL: {url}"
-
     else:
         print("⛔️  Neatpažintas pasirinkimas.")
         continue
