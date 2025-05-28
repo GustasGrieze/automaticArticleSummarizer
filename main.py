@@ -2,6 +2,8 @@ import pathlib, sys, textwrap, re, torch, warnings, requests, datetime
 from rich import print
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from deepmultilingualpunctuation import PunctuationModel
+from bs4 import BeautifulSoup
+
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -16,9 +18,14 @@ model     = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(DEVICE)
 print("[italic dim]🔄  Kraunamas skyrybos modelis (deepmultilingualpunctuation) …[/]")
 punct_model = PunctuationModel()
 
-def restore_punct(text: str) -> str:
-    clean = re.sub(r"\s+", " ", text.strip().lower())
-    return punct_model.restore_punctuation(clean)
+def restore_punct(text: str, chunk_size: int = 400) -> str:
+    words = text.split()
+    restored_parts = []
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i : i + chunk_size])
+        restored_parts.append(punct_model.restore_punctuation(chunk))
+    return " ".join(restored_parts)
+
 
 def count_sentences(txt: str) -> int:
     return len(re.findall(r"[.!?]", txt))
@@ -74,12 +81,14 @@ titles = [parse_title(b) for b in raw_articles]
 
 def fetch_url(url: str) -> str:
     html = requests.get(url, timeout=10).text
-    txt = "\n".join(re.findall(r"<p[^>]*>(.*?)</p>", html, flags=re.S | re.I))
-    txt = re.sub("<[^>]+>", "", txt)
+    soup = BeautifulSoup(html, "html.parser")
 
-    if not txt or len(txt.split()) < 100:
+    paragraphs = [p.get_text(" ", strip=True) for p in soup.find_all("p")]
+    txt = "\n".join(paragraphs)
+
+    if len(txt.split()) < 100:
         sys.exit("Nepavyko išgauti pakankamai teksto iš URL.")
-    return txt.strip()
+    return txt
 
 def log_summary(source: str, summary: str):
     """Prideda santrauką į santraukos.txt (prie galo)."""
